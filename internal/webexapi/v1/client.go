@@ -9,6 +9,9 @@ import (
 type Client interface {
 	// GetMessage gets a message with the specified identifier
 	GetMessage(ctx context.Context, messageId string) (*Message, *WebexError, error)
+
+	// GetAttachmentAction gets an attachment action with the specified identifier
+	GetAttachmentAction(ctx context.Context, attachmentActionId string) (*AttachmentAction, *WebexError, error)
 }
 
 // client is an implementation of the Client interface
