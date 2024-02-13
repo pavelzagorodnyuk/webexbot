@@ -1,9 +1,15 @@
 package webexapi
 
-import "net/http"
+import (
+	"context"
+	"net/http"
+)
 
 // Client provides methods to interact with the Webex API
-type Client interface{}
+type Client interface {
+	// GetMessage gets a message with the specified identifier
+	GetMessage(ctx context.Context, messageId string) (*Message, *WebexError, error)
+}
 
 // client is an implementation of the Client interface
 type client struct {
