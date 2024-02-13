@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"testing"
 
 	"gotest.tools/v3/assert/cmp"
 )
@@ -63,12 +64,12 @@ func compareHeaders(headerX, headerY Header) cmp.Comparison {
 
 func compareBodies(bodyX, bodyY []byte) cmp.Comparison {
 	return func() cmp.Result {
-		minifiedBodyX, err := MinifyJSONBytes(bodyX)
+		minifiedBodyX, err := MinifyJSON(bodyX)
 		if err != nil {
 			return cmp.ResultFromError(err)
 		}
 
-		minifiedBodyY, err := MinifyJSONBytes(bodyY)
+		minifiedBodyY, err := MinifyJSON(bodyY)
 		if err != nil {
 			return cmp.ResultFromError(err)
 		}
@@ -88,16 +89,7 @@ func executeComparisons(comparisons []cmp.Comparison) cmp.Result {
 }
 
 // MinifyJSON removes spaces from the JSON data and escapes some characters
-func MinifyJSON(src string) (string, error) {
-	minifiedJSON, err := MinifyJSONBytes([]byte(src))
-	if err != nil {
-		return "", err
-	}
-	return string(minifiedJSON), nil
-}
-
-// MinifyJSONBytes removes spaces from the JSON data and escapes some characters
-func MinifyJSONBytes(src []byte) ([]byte, error) {
+func MinifyJSON(src []byte) ([]byte, error) {
 	if len(src) == 0 {
 		return []byte{}, nil
 	}
@@ -112,6 +104,16 @@ func MinifyJSONBytes(src []byte) ([]byte, error) {
 	json.HTMLEscape(bufferForEscape, bufferForCompression.Bytes())
 
 	return bufferForEscape.Bytes(), nil
+}
+
+// MustMinifyJSON acts like MinifyJSON, but accepts JSON data in string format and calls t.Fatal() if any error
+// occurred during minimization
+func MustMinifyJSON(t *testing.T, src string) []byte {
+	minifiedJSON, err := MinifyJSON([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return minifiedJSON
 }
 
 // Header represents an HTTP header intended for testing
@@ -134,7 +136,13 @@ type Response struct {
 }
 
 // WriteTo writes the HTTP response to the response writer
-func (r *Response) WriteTo(responseWriter http.ResponseWriter) {
+func (r *Response) WriteTo(responseWriter http.ResponseWriter) error {
 	responseWriter.WriteHeader(r.StatusCode)
-	responseWriter.Write(r.Body)
+
+	minifiedBody, err := MinifyJSON(r.Body)
+	if err != nil {
+		return err
+	}
+	_, err = responseWriter.Write(minifiedBody)
+	return err
 }
