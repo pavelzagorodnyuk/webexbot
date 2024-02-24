@@ -7,6 +7,9 @@ import (
 
 // Client provides methods to interact with the Webex API
 type Client interface {
+	// CreateMessage creates a new message with the specified content
+	CreateMessage(ctx context.Context, request CreateMessageRequest) (*Message, *WebexError, error)
+
 	// GetMessage gets a message with the specified identifier
 	GetMessage(ctx context.Context, messageId string) (*Message, *WebexError, error)
 

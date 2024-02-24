@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"gotest.tools/v3/assert/cmp"
@@ -36,21 +37,21 @@ func NewRequestFrom(request *http.Request) (Request, error) {
 
 // CompareRequests compares two requests and succeeds if they are equal
 func CompareRequests(requestX, requestY Request) cmp.Comparison {
+	var comparisons []cmp.Comparison
+
+	methodComparison := cmp.Equal(requestX.Method, requestY.Method)
+	comparisons = append(comparisons, methodComparison)
+
+	pathComparison := cmp.Equal(requestX.Path, requestY.Path)
+	comparisons = append(comparisons, pathComparison)
+
+	headerComparison := compareHeaders(requestX.Header, requestY.Header)
+	comparisons = append(comparisons, headerComparison)
+
+	bodyComparison := compareBodies(requestX, requestY)
+	comparisons = append(comparisons, bodyComparison)
+
 	return func() cmp.Result {
-		var comparisons []cmp.Comparison
-
-		methodComparison := cmp.Equal(requestX.Method, requestY.Method)
-		comparisons = append(comparisons, methodComparison)
-
-		pathComparison := cmp.Equal(requestX.Path, requestY.Path)
-		comparisons = append(comparisons, pathComparison)
-
-		headerComparison := compareHeaders(requestX.Header, requestY.Header)
-		comparisons = append(comparisons, headerComparison)
-
-		bodyComparison := compareBodies(requestX.Body, requestY.Body)
-		comparisons = append(comparisons, bodyComparison)
-
 		return executeComparisons(comparisons)
 	}
 }
@@ -62,7 +63,26 @@ func compareHeaders(headerX, headerY Header) cmp.Comparison {
 	}
 }
 
-func compareBodies(bodyX, bodyY []byte) cmp.Comparison {
+func compareBodies(requestX, requestY Request) cmp.Comparison {
+	contentTypeX := requestX.Header["Content-Type"]
+	contentTypeY := requestY.Header["Content-Type"]
+
+	const contentTypeJSON = "application/json"
+	const contentTypeMultipart = "multipart/form-data"
+
+	switch {
+	case strings.Contains(contentTypeX, contentTypeJSON) && strings.Contains(contentTypeY, contentTypeJSON):
+		return compareJSONContent(requestX.Body, requestY.Body)
+
+	case strings.Contains(contentTypeX, contentTypeMultipart) && strings.Contains(contentTypeY, contentTypeMultipart):
+		return compareMultipartContent(requestX, requestY)
+
+	default:
+		return cmp.DeepEqual(requestX.Body, requestY.Body)
+	}
+}
+
+func compareJSONContent(bodyX, bodyY []byte) cmp.Comparison {
 	return func() cmp.Result {
 		minifiedBodyX, err := MinifyJSON(bodyX)
 		if err != nil {
@@ -76,6 +96,42 @@ func compareBodies(bodyX, bodyY []byte) cmp.Comparison {
 
 		return cmp.DeepEqual(minifiedBodyX, minifiedBodyY)()
 	}
+}
+
+func compareMultipartContent(requestX, requestY Request) cmp.Comparison {
+	return func() cmp.Result {
+		preparedBodyX, err := prepareMultipartBody(requestX)
+		if err != nil {
+			return cmp.ResultFromError(err)
+		}
+
+		preparedBodyY, err := prepareMultipartBody(requestY)
+		if err != nil {
+			return cmp.ResultFromError(err)
+		}
+
+		return cmp.DeepEqual(preparedBodyX, preparedBodyY)()
+	}
+}
+
+func prepareMultipartBody(request Request) ([]byte, error) {
+	contentType := request.Header["Content-Type"]
+	requestBoundary, err := scanMultipartBoundary(contentType)
+	if err != nil {
+		return nil, fmt.Errorf("unable to fetch the multipart boundary from the request : %w", err)
+	}
+
+	const targetBoundary = "xxxMultipartBoundaryxxx"
+	bodyWithReplacedBoundary := bytes.ReplaceAll(request.Body, []byte(requestBoundary), []byte(targetBoundary))
+
+	bodyWithoutCarriageReturns := bytes.ReplaceAll(bodyWithReplacedBoundary, []byte("\r"), nil)
+
+	return bodyWithoutCarriageReturns, nil
+}
+
+func scanMultipartBoundary(contentType string) (boundary string, err error) {
+	_, err = fmt.Sscanf(contentType, "multipart/form-data; boundary=%s", &boundary)
+	return
 }
 
 func executeComparisons(comparisons []cmp.Comparison) cmp.Result {

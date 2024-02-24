@@ -125,18 +125,18 @@ func TestClient_GetAttachmentAction(t *testing.T) {
 
 			switch {
 			case testCase.errorMessage != "":
-				assert.Assert(t, response == nil)
-				assert.Assert(t, webexErr == nil)
+				assert.Assert(t, cmp.Nil(response))
+				assert.Assert(t, cmp.Nil(webexErr))
 				assert.ErrorContains(t, err, testCase.errorMessage)
 
 			case testCase.webexError != nil:
-				assert.Assert(t, response == nil)
-				assert.Assert(t, err == nil)
+				assert.Assert(t, cmp.Nil(response))
+				assert.NilError(t, err)
 				assert.DeepEqual(t, testCase.webexError, webexErr)
 
 			default:
-				assert.Assert(t, webexErr == nil)
-				assert.Assert(t, err == nil)
+				assert.Assert(t, cmp.Nil(webexErr))
+				assert.NilError(t, err)
 				assert.DeepEqual(t, testCase.attachmentAction, response)
 			}
 		})
