@@ -15,6 +15,9 @@ type Client interface {
 
 	// GetAttachmentAction gets an attachment action with the specified identifier
 	GetAttachmentAction(ctx context.Context, attachmentActionId string) (*AttachmentAction, *WebexError, error)
+
+	// CreateWebhook creates a new webhook with the specified parameters
+	CreateWebhook(ctx context.Context, request CreateWebhookRequest) (*Webhook, *WebexError, error)
 }
 
 // client is an implementation of the Client interface
