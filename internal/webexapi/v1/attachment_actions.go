@@ -62,7 +62,7 @@ func (c *client) newHTTPRequestToGetAttachmentAction(
 
 	fullURL, err := url.JoinPath(c.webexURL, "/attachment/actions", attachmentActionId)
 	if err != nil {
-		return nil, fmt.Errorf("unable to constract the request URL : %w", err)
+		return nil, fmt.Errorf("unable to construct the request URL : %w", err)
 	}
 
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)

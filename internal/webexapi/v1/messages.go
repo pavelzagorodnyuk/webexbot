@@ -76,7 +76,7 @@ func (c *client) newHTTPRequestToGetMessage(ctx context.Context, messageId strin
 
 	fullURL, err := url.JoinPath(c.webexURL, "/messages", messageId)
 	if err != nil {
-		return nil, fmt.Errorf("unable to constract the request URL : %w", err)
+		return nil, fmt.Errorf("unable to construct the request URL : %w", err)
 	}
 
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
@@ -145,7 +145,7 @@ func (c *client) newHTTPRequestToCreateMessage(
 
 	fullURL, err := url.JoinPath(c.webexURL, "/messages")
 	if err != nil {
-		return nil, fmt.Errorf("unable to constract the request URL : %w", err)
+		return nil, fmt.Errorf("unable to construct the request URL : %w", err)
 	}
 
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bodyReader)

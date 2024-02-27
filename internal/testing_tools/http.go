@@ -135,8 +135,8 @@ func scanMultipartBoundary(contentType string) (boundary string, err error) {
 }
 
 func executeComparisons(comparisons []cmp.Comparison) cmp.Result {
-	for _, compariseFunc := range comparisons {
-		result := compariseFunc()
+	for _, comparisonFunc := range comparisons {
+		result := comparisonFunc()
 		if !result.Success() {
 			return result
 		}
