@@ -7,9 +7,7 @@ import (
 	"time"
 )
 
-// Conversation core is the heart of the conversation processor. It manages all active dialogs and dialog tasks of a
-// bot — it creates dialogs, runs and stops dialog task and distributes incoming events between them.
-type conversationCore struct {
+type dialogController struct {
 	incomingEvents     <-chan Event
 	dialogProvider     dialogProvider
 	dialogTaskProvider DialogTaskProvider
@@ -32,12 +30,12 @@ type completionSignal struct {
 	executionError error
 }
 
-func newConversationCore(
+func newDialogController(
 	incomingEvents <-chan Event,
 	dialogProvider dialogProvider,
 	dialogTaskProvider DialogTaskProvider,
-) conversationCore {
-	return conversationCore{
+) dialogController {
+	return dialogController{
 		incomingEvents:     incomingEvents,
 		dialogProvider:     dialogProvider,
 		dialogTaskProvider: dialogTaskProvider,
@@ -46,7 +44,7 @@ func newConversationCore(
 	}
 }
 
-func (c *conversationCore) listenAndServe(ctx context.Context) {
+func (c *dialogController) run(ctx context.Context) {
 	defer c.stopAllDialogs()
 
 	for {
@@ -63,7 +61,7 @@ func (c *conversationCore) listenAndServe(ctx context.Context) {
 	}
 }
 
-func (c *conversationCore) processEvent(ctx context.Context, event Event) {
+func (c *dialogController) processEvent(ctx context.Context, event Event) {
 	triggeredTask := c.dialogTaskProvider.ProvideFor(event)
 
 	key := dialogKey{
@@ -87,12 +85,12 @@ func (c *conversationCore) processEvent(ctx context.Context, event Event) {
 	}
 }
 
-func (c *conversationCore) isDialogActive(key dialogKey) bool {
+func (c *dialogController) isDialogActive(key dialogKey) bool {
 	_, isActive := c.activeDialogs[key]
 	return isActive
 }
 
-func (c *conversationCore) startDialog(ctx context.Context, key dialogKey, task DialogTask) {
+func (c *dialogController) startDialog(ctx context.Context, key dialogKey, task DialogTask) {
 	dialog, eventChan, cancelFunc := c.dialogProvider.provideFor(ctx, key.personId, key.roomId)
 
 	go dialogTaskRoutine(dialog, task, c.completionSignals, cancelFunc)
@@ -137,7 +135,7 @@ func dialogTaskRoutine(
 	err = task.Talk(dialog)
 }
 
-func (c *conversationCore) pushEvent(ctx context.Context, key dialogKey, event Event) {
+func (c *dialogController) pushEvent(ctx context.Context, key dialogKey, event Event) {
 	const pushingTimeout = 10 * time.Millisecond
 	ctx, cancel := context.WithTimeout(ctx, pushingTimeout)
 	defer cancel()
@@ -159,7 +157,7 @@ func (c *conversationCore) pushEvent(ctx context.Context, key dialogKey, event E
 	}
 }
 
-func (c *conversationCore) stopDialog(key dialogKey) {
+func (c *dialogController) stopDialog(key dialogKey) {
 	dialog := c.activeDialogs[key]
 
 	select {
@@ -173,13 +171,13 @@ func (c *conversationCore) stopDialog(key dialogKey) {
 	}
 }
 
-func (c *conversationCore) stopAllDialogs() {
+func (c *dialogController) stopAllDialogs() {
 	for key := range c.activeDialogs {
 		c.stopDialog(key)
 	}
 }
 
-func (c *conversationCore) processCompletionSignal(signal completionSignal) {
+func (c *dialogController) processCompletionSignal(signal completionSignal) {
 	if signal.executionError != nil {
 		slog.Error("the following error occurred during the execution of the dialog task : %w", signal.executionError)
 	}
