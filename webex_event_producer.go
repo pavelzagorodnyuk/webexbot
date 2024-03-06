@@ -124,10 +124,10 @@ func (p webexEventProducer) webhookHandlerURL() string {
 // webhookHandler is an HTTP handler which serves webhook callbacks and creates a new Event for each of them. Those
 // events which match the handler filters are sent into the channel for outgoing events.
 type webhookHandler struct {
-	authenticationKey string
-	webexClient       webexapi.Client
-	filters           []EventFilter
-	outgoingEvents    chan<- Event
+	webhookSecret  string
+	webexClient    webexapi.Client
+	filters        []EventFilter
+	outgoingEvents chan<- Event
 }
 
 // EventFilter is a function that decides which events must be processed and which must be skipped. An event matches
@@ -135,16 +135,16 @@ type webhookHandler struct {
 type EventFilter func(Event) bool
 
 func newWebhookHandler(
-	authenticationKey string,
+	webhookSecret string,
 	webexClient webexapi.Client,
 	filters []EventFilter,
 	outgoingEvents chan<- Event,
 ) webhookHandler {
 	return webhookHandler{
-		authenticationKey: authenticationKey,
-		webexClient:       webexClient,
-		filters:           filters,
-		outgoingEvents:    outgoingEvents,
+		webhookSecret:  webhookSecret,
+		webexClient:    webexClient,
+		filters:        filters,
+		outgoingEvents: outgoingEvents,
 	}
 }
 
@@ -190,6 +190,11 @@ func (h webhookHandler) ServeHTTP(response http.ResponseWriter, request *http.Re
 }
 
 func (h webhookHandler) authenticate(request *http.Request) error {
+	// skip authentication if the webhook secret is not defined
+	if len(h.webhookSecret) == 0 {
+		return nil
+	}
+
 	// MAC is a message authentication code which is used to verify both the data integrity and authenticity of a
 	// message. A message is considered verified if the both provided and locally computed MACs are equal.
 	providedMAC := h.fetchMAC(request)
@@ -223,7 +228,7 @@ func (h webhookHandler) computeMAC(request *http.Request) ([]byte, error) {
 		return nil, fmt.Errorf("unable to get the request body : %w", err)
 	}
 
-	hmacEncoder := hmac.New(sha1.New, []byte(h.authenticationKey))
+	hmacEncoder := hmac.New(sha1.New, []byte(h.webhookSecret))
 	_, err = io.Copy(hmacEncoder, body)
 	if err != nil {
 		return nil, err
