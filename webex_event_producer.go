@@ -25,7 +25,8 @@ type webexEventProducer struct {
 }
 
 func newWebexEventProducer(
-	addr string,
+	hostname string,
+	port int,
 	webexClient webexapi.Client,
 	outgoingEvents chan<- Event,
 	authenticationKey string,
@@ -36,16 +37,17 @@ func newWebexEventProducer(
 	webhookHandler := newWebhookHandler(authenticationKey, webexClient, filters, outgoingEvents)
 	mux.Handle("POST "+webhookHandlerPath, webhookHandler)
 
-	// TODO: should we validate addr here?
+	hostnameAndPort := fmt.Sprintf("%s:%d", hostname, port)
 
 	return webexEventProducer{
 		authenticationKey: authenticationKey,
 		webexClient:       webexClient,
 		webhookServer: &http.Server{
-			Addr:      addr,
-			Handler:   mux,
-			TLSConfig: tlsConfig,
-			// TODO: add timeouts here
+			Addr:         hostnameAndPort,
+			Handler:      mux,
+			TLSConfig:    tlsConfig,
+			ReadTimeout:  5 * time.Second,
+			WriteTimeout: 10 * time.Second,
 		},
 	}
 }
