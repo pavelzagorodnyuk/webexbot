@@ -149,10 +149,12 @@ func newWebhookHandler(
 }
 
 func (h webhookHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
+	ctx := request.Context()
+
 	err := h.authenticate(request)
 	if err != nil {
 		response.WriteHeader(http.StatusUnauthorized)
-		slog.Error("the request cannot be processed because its sender has not been authenticated : %w", err)
+		slog.ErrorContext(ctx, "the request cannot be processed because its sender has not been authenticated : %w", err)
 		return
 	}
 
@@ -160,23 +162,21 @@ func (h webhookHandler) ServeHTTP(response http.ResponseWriter, request *http.Re
 	err = json.NewDecoder(request.Body).Decode(callback)
 	if err != nil {
 		response.WriteHeader(http.StatusBadRequest)
-		slog.Error("unable to decode the request body as a webhook callback : %w", err)
+		slog.ErrorContext(ctx, "unable to decode the request body as a webhook callback : %w", err)
 		return
 	}
-
-	ctx := request.Context()
 
 	event, statusCode, err := h.prepareEvent(ctx, *callback)
 	if err != nil {
 		response.WriteHeader(statusCode)
-		slog.Error("unable to prepare an event based on the webhook callback : %w", err)
+		slog.ErrorContext(ctx, "unable to prepare an event based on the webhook callback : %w", err)
 		return
 	}
 
 	matches := h.matchesFilters(event)
 	if !matches {
 		response.WriteHeader(http.StatusOK)
-		slog.Info("skipping the event because it does not match the filters")
+		slog.InfoContext(ctx, "skipping the event because it does not match the filters")
 		return
 	}
 
@@ -185,7 +185,7 @@ func (h webhookHandler) ServeHTTP(response http.ResponseWriter, request *http.Re
 		response.WriteHeader(http.StatusAccepted)
 	} else {
 		response.WriteHeader(http.StatusTooManyRequests)
-		slog.Error("unable to enqueue the event because the queue is full")
+		slog.ErrorContext(ctx, "unable to enqueue the event because the queue is full")
 	}
 }
 

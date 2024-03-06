@@ -53,7 +53,7 @@ func (c *dialogController) run(ctx context.Context) {
 			c.processEvent(ctx, nextEvent)
 
 		case nextSignal := <-c.completionSignals:
-			c.processCompletionSignal(nextSignal)
+			c.processCompletionSignal(ctx, nextSignal)
 
 		case <-ctx.Done():
 			return
@@ -152,7 +152,7 @@ func (c *dialogController) pushEvent(ctx context.Context, key dialogKey, event E
 		return
 
 	case <-ctx.Done():
-		slog.Warn("unable to push the event to the dialog task because the pushing timeout has expired")
+		slog.WarnContext(ctx, "unable to push the event to the dialog task because the pushing timeout has expired")
 		return
 	}
 }
@@ -177,9 +177,10 @@ func (c *dialogController) stopAllDialogs() {
 	}
 }
 
-func (c *dialogController) processCompletionSignal(signal completionSignal) {
+func (c *dialogController) processCompletionSignal(ctx context.Context, signal completionSignal) {
 	if signal.executionError != nil {
-		slog.Error("the following error occurred during the execution of the dialog task : %w", signal.executionError)
+		slog.ErrorContext(ctx, "the following error occurred during the execution of the dialog task : %w",
+			signal.executionError)
 	}
 
 	dialog := c.activeDialogs[signal.key]
