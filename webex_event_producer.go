@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha1"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,10 +17,115 @@ import (
 	"github.com/pavelzagorodnyuk/webexbot/internal/webexapi/v1"
 )
 
+// A webexEventProducer produces events which are based on Webex webhook callbacks
+type webexEventProducer struct {
+	authenticationKey string
+	webexClient       webexapi.Client
+	webhookServer     *http.Server
+}
+
+func newWebexEventProducer(
+	addr string,
+	webexClient webexapi.Client,
+	outgoingEvents chan<- Event,
+	authenticationKey string,
+	tlsConfig *tls.Config,
+	filters []EventFilter,
+) webexEventProducer {
+	mux := http.NewServeMux()
+	webhookHandler := newWebhookHandler(authenticationKey, webexClient, filters, outgoingEvents)
+	mux.Handle("POST "+webhookHandlerPath, webhookHandler)
+
+	// TODO: should we validate addr here?
+
+	return webexEventProducer{
+		authenticationKey: authenticationKey,
+		webexClient:       webexClient,
+		webhookServer: &http.Server{
+			Addr:      addr,
+			Handler:   mux,
+			TLSConfig: tlsConfig,
+		},
+	}
+}
+
+func (p webexEventProducer) run(ctx context.Context) error {
+	err := p.createWebhooks(ctx)
+	if err != nil {
+		return err
+	}
+
+	// schedule the server to close when the context is done
+	context.AfterFunc(ctx, func() {
+		_ = p.webhookServer.Close()
+	})
+
+	return p.webhookServer.ListenAndServe()
+}
+
+func (p webexEventProducer) createWebhooks(ctx context.Context) error {
+	err := p.createMessageWebhook(ctx)
+	if err != nil {
+		return fmt.Errorf("unable to create a webhook for messages : %w", err)
+	}
+
+	err = p.createAttachmentActionWebhook(ctx)
+	if err != nil {
+		return fmt.Errorf("unable to create a webhook for attachment actions : %w", err)
+	}
+	return nil
+}
+
+func (p webexEventProducer) createMessageWebhook(ctx context.Context) error {
+	request := webexapi.CreateWebhookRequest{
+		Name:      "Message webhook [webexbot]",
+		TargetUrl: p.webhookHandlerURL(),
+		Resource:  webexapi.Messages,
+		Event:     webexapi.ResourceCreated,
+		Secret:    p.authenticationKey,
+	}
+
+	_, webexErr, err := p.webexClient.CreateWebhook(ctx, request)
+	if err != nil {
+		return err
+	}
+	// the HTTP status conflict means that the webhook already exists
+	if webexErr != nil && webexErr.StatusCode != http.StatusConflict {
+		return webexErr
+	}
+	return nil
+}
+
+func (p webexEventProducer) createAttachmentActionWebhook(ctx context.Context) error {
+	request := webexapi.CreateWebhookRequest{
+		Name:      "Attachment action webhook [webexbot]",
+		TargetUrl: p.webhookHandlerURL(),
+		Resource:  webexapi.AttachmentActions,
+		Event:     webexapi.ResourceCreated,
+		Secret:    p.authenticationKey,
+	}
+
+	_, webexErr, err := p.webexClient.CreateWebhook(ctx, request)
+	if err != nil {
+		return err
+	}
+	// the HTTP status conflict means that the webhook already exists
+	if webexErr != nil && webexErr.StatusCode != http.StatusConflict {
+		return webexErr
+	}
+	return nil
+}
+
+const webhookHandlerPath = "/webhooks"
+
+func (p webexEventProducer) webhookHandlerURL() string {
+	return fmt.Sprintf("https://%s%s", p.webhookServer.Addr, webhookHandlerPath)
+}
+
 // webhookHandler is an HTTP handler which serves webhook callbacks and creates a new Event for each of them. Those
 // events which match the handler filters are sent into the channel for outgoing events.
 type webhookHandler struct {
-	authenticationKey []byte
+	authenticationKey string
 	webexClient       webexapi.Client
 	filters           []EventFilter
 	outgoingEvents    chan<- Event
@@ -30,7 +136,7 @@ type webhookHandler struct {
 type EventFilter func(Event) bool
 
 func newWebhookHandler(
-	authenticationKey []byte,
+	authenticationKey string,
 	webexClient webexapi.Client,
 	filters []EventFilter,
 	outgoingEvents chan<- Event,
@@ -43,7 +149,7 @@ func newWebhookHandler(
 	}
 }
 
-func (h *webhookHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
+func (h webhookHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	err := h.authenticate(request)
 	if err != nil {
 		response.WriteHeader(http.StatusUnauthorized)
@@ -84,7 +190,7 @@ func (h *webhookHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 	}
 }
 
-func (h *webhookHandler) authenticate(request *http.Request) error {
+func (h webhookHandler) authenticate(request *http.Request) error {
 	// MAC is a message authentication code which is used to verify both the data integrity and authenticity of a
 	// message. A message is considered verified if the both provided and locally computed MACs are equal.
 	providedMAC := h.fetchMAC(request)
@@ -103,7 +209,7 @@ func (h *webhookHandler) authenticate(request *http.Request) error {
 	return nil
 }
 
-func (h *webhookHandler) fetchMAC(request *http.Request) []byte {
+func (h webhookHandler) fetchMAC(request *http.Request) []byte {
 	// X-Spark-Signature is an HTTP header which contains a hash-based message authentication code
 	mac := request.Header.Get("X-Spark-Signature")
 	if len(mac) == 0 {
@@ -112,13 +218,13 @@ func (h *webhookHandler) fetchMAC(request *http.Request) []byte {
 	return []byte(mac)
 }
 
-func (h *webhookHandler) computeMAC(request *http.Request) ([]byte, error) {
+func (h webhookHandler) computeMAC(request *http.Request) ([]byte, error) {
 	body, err := request.GetBody()
 	if err != nil {
 		return nil, fmt.Errorf("unable to get the request body : %w", err)
 	}
 
-	hmacEncoder := hmac.New(sha1.New, h.authenticationKey)
+	hmacEncoder := hmac.New(sha1.New, []byte(h.authenticationKey))
 	_, err = io.Copy(hmacEncoder, body)
 	if err != nil {
 		return nil, err
@@ -128,7 +234,7 @@ func (h *webhookHandler) computeMAC(request *http.Request) ([]byte, error) {
 }
 
 // prepareEvent prepares a new Event based on the passed webhook callback
-func (h *webhookHandler) prepareEvent(
+func (h webhookHandler) prepareEvent(
 	ctx context.Context,
 	callback webexapi.WebhookCallback,
 ) (
@@ -161,7 +267,7 @@ func (h *webhookHandler) prepareEvent(
 	}, 0, nil
 }
 
-func (h *webhookHandler) prepareEventResource(
+func (h webhookHandler) prepareEventResource(
 	ctx context.Context,
 	callback webexapi.WebhookCallback,
 ) (
@@ -208,7 +314,7 @@ func (h *webhookHandler) prepareEventResource(
 	}
 }
 
-func (h *webhookHandler) encodeResourceId(rawResource json.RawMessage) (string, error) {
+func (h webhookHandler) encodeResourceId(rawResource json.RawMessage) (string, error) {
 	type resourceWithId struct {
 		Id string `json:"id"`
 	}
@@ -218,7 +324,7 @@ func (h *webhookHandler) encodeResourceId(rawResource json.RawMessage) (string, 
 	return resource.Id, err
 }
 
-func (h *webhookHandler) fetchInitiatorEmail(resource any) string {
+func (h webhookHandler) fetchInitiatorEmail(resource any) string {
 	switch v := resource.(type) {
 	case webexapi.Message:
 		return v.PersonEmail
@@ -230,7 +336,7 @@ func (h *webhookHandler) fetchInitiatorEmail(resource any) string {
 	}
 }
 
-func (h *webhookHandler) fetchRoomId(resource any) string {
+func (h webhookHandler) fetchRoomId(resource any) string {
 	switch v := resource.(type) {
 	case webexapi.Message:
 		return v.RoomId
@@ -243,7 +349,7 @@ func (h *webhookHandler) fetchRoomId(resource any) string {
 	}
 }
 
-func (h *webhookHandler) matchesFilters(event Event) bool {
+func (h webhookHandler) matchesFilters(event Event) bool {
 	for _, filter := range h.filters {
 		matches := filter(event)
 		if !matches {
@@ -253,7 +359,7 @@ func (h *webhookHandler) matchesFilters(event Event) bool {
 	return true
 }
 
-func (h *webhookHandler) enqueue(ctx context.Context, event Event) (isSuccessful bool) {
+func (h webhookHandler) enqueue(ctx context.Context, event Event) (isSuccessful bool) {
 	for {
 		select {
 		case h.outgoingEvents <- event:
