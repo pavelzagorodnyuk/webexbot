@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/pavelzagorodnyuk/webexbot/internal/webexapi/v1"
@@ -44,6 +45,7 @@ func newWebexEventProducer(
 			Addr:      addr,
 			Handler:   mux,
 			TLSConfig: tlsConfig,
+			// TODO: add timeouts here
 		},
 	}
 }
@@ -118,7 +120,18 @@ func (p webexEventProducer) createAttachmentActionWebhook(ctx context.Context) e
 const webhookHandlerPath = "/webhooks"
 
 func (p webexEventProducer) webhookHandlerURL() string {
-	return fmt.Sprintf("https://%s%s", p.webhookServer.Addr, webhookHandlerPath)
+	webhookHandlerURL := url.URL{
+		Host: p.webhookServer.Addr,
+		Path: webhookHandlerPath,
+	}
+
+	if p.webhookServer.TLSConfig == nil {
+		webhookHandlerURL.Scheme = "http"
+	} else {
+		webhookHandlerURL.Scheme = "https"
+	}
+
+	return webhookHandlerURL.String()
 }
 
 // webhookHandler is an HTTP handler which serves webhook callbacks and creates a new Event for each of them. Those
