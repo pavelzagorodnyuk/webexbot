@@ -4,9 +4,6 @@ import "github.com/pavelzagorodnyuk/webexbot/internal/webexapi/v1"
 
 // Event describes an event which happened on the Webex side and is directly or indirectly related to a bot
 type Event struct {
-	// The unique identifier of the event
-	Id string
-
 	// The identifier of the person who initiated the event
 	InitiatorId string
 

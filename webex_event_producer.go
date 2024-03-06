@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/pavelzagorodnyuk/webexbot/internal/webexapi/v1"
 )
 
@@ -247,17 +246,10 @@ func (h webhookHandler) prepareEvent(
 		return Event{}, statusCode, fmt.Errorf("unable to prepare the resource : %w", err)
 	}
 
-	eventId, err := uuid.NewRandom()
-	if err != nil {
-		return Event{}, http.StatusInternalServerError,
-			fmt.Errorf("unable to generate an identifier for the event : %w", err)
-	}
-
 	initiatorEmail := h.fetchInitiatorEmail(resource)
 	roomId := h.fetchRoomId(resource)
 
 	return Event{
-		Id:             eventId.String(),
 		InitiatorId:    callback.ActorId,
 		InitiatorEmail: initiatorEmail,
 		RoomId:         roomId,
