@@ -56,6 +56,7 @@ func (b BotBuilder) Build() (Bot, error) {
 
 	webexClient := b.createWebexClient()
 	eventChan := make(chan Event, eventChannelBufferSize)
+	messengerProvider := newMessengerProvider(webexClient)
 
 	webexEventProducer := newWebexEventProducer(
 		b.hostname,
@@ -69,8 +70,8 @@ func (b BotBuilder) Build() (Bot, error) {
 
 	dialogController := newDialogController(
 		eventChan,
-		dialogProvider{},
 		b.dialogTaskProvider,
+		messengerProvider,
 	)
 
 	return Bot{
