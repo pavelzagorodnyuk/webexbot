@@ -9,9 +9,9 @@ import (
 
 type dialogController struct {
 	incomingEvents     <-chan Event
-	dialogProvider     dialogProvider
 	dialogTaskProvider DialogTaskProvider
 	activeDialogs      map[dialogKey]dialogReferences
+	messengerProvider  messengerProvider
 	completionSignals  chan completionSignal
 }
 
@@ -32,14 +32,14 @@ type completionSignal struct {
 
 func newDialogController(
 	incomingEvents <-chan Event,
-	dialogProvider dialogProvider,
 	dialogTaskProvider DialogTaskProvider,
+	messengerProvider messengerProvider,
 ) dialogController {
 	return dialogController{
 		incomingEvents:     incomingEvents,
-		dialogProvider:     dialogProvider,
 		dialogTaskProvider: dialogTaskProvider,
 		activeDialogs:      make(map[dialogKey]dialogReferences),
+		messengerProvider:  messengerProvider,
 		completionSignals:  make(chan completionSignal),
 	}
 }
@@ -77,7 +77,7 @@ func (c *dialogController) processEvent(ctx context.Context, event Event) {
 		fallthrough
 
 	case !isActive && triggeredTask != nil:
-		c.startDialog(ctx, key, triggeredTask)
+		c.startDialog(ctx, triggeredTask, event)
 		fallthrough
 
 	case isActive && triggeredTask == nil:
@@ -90,29 +90,37 @@ func (c *dialogController) isDialogActive(key dialogKey) bool {
 	return isActive
 }
 
-func (c *dialogController) startDialog(ctx context.Context, key dialogKey, task DialogTask) {
-	dialog, eventChan, cancelFunc := c.dialogProvider.provideFor(ctx, key.personId, key.roomId)
+func (c *dialogController) startDialog(ctx context.Context, task DialogTask, initialEvent Event) {
+	ctx, cancelFunc := context.WithCancel(ctx)
+	eventChan := make(chan Event, 16)
+	messenger := c.messengerProvider.provide(initialEvent, eventChan)
 
-	go dialogTaskRoutine(dialog, task, c.completionSignals, cancelFunc)
+	go dialogTaskRoutine(ctx, task, messenger, c.completionSignals, cancelFunc)
+
+	key := dialogKey{
+		personId: initialEvent.InitiatorId,
+		roomId:   initialEvent.RoomId,
+	}
 
 	c.activeDialogs[key] = dialogReferences{
-		context:    dialog,
+		context:    ctx,
 		eventChan:  eventChan,
 		cancelFunc: cancelFunc,
 	}
 }
 
 func dialogTaskRoutine(
-	dialog Dialog,
+	ctx context.Context,
 	task DialogTask,
+	messenger Messenger,
 	completionSignals chan<- completionSignal,
 	cancelFunc context.CancelFunc,
 ) {
 	var err error
 	defer func() {
 		select {
-		// do not send a completion signal if the dialog has been stopped from the outside
-		case <-dialog.Done():
+		// do not send a completion signal if the dialog task has been stopped from the outside
+		case <-ctx.Done():
 			return
 
 		default:
@@ -120,19 +128,19 @@ func dialogTaskRoutine(
 		}
 
 		if panicMessage := recover(); panicMessage != nil {
-			err = fmt.Errorf("the dialog is recovered from panic : %v", panicMessage)
+			err = fmt.Errorf("the dialog task is recovered from panic : %v", panicMessage)
 		}
 
 		completionSignals <- completionSignal{
 			key: dialogKey{
-				personId: dialog.PersonId(),
-				roomId:   dialog.RoomId(),
+				personId: messenger.DialogInfo().PersonId,
+				roomId:   messenger.DialogInfo().RoomId,
 			},
 			executionError: err,
 		}
 	}()
 
-	err = task.Talk(dialog)
+	err = task.Talk(ctx, messenger)
 }
 
 func (c *dialogController) pushEvent(ctx context.Context, key dialogKey, event Event) {

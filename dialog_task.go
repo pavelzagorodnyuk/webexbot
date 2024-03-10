@@ -1,8 +1,10 @@
 package webexbot
 
+import "context"
+
 // DialogTask defines the behavior of a bot in a dialog with a user
 type DialogTask interface {
-	Talk(Dialog) error
+	Talk(context.Context, Messenger) error
 }
 
 // Provides dialog tasks for the event processing
