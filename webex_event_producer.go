@@ -1,10 +1,12 @@
 package webexbot
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha1"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -212,7 +214,10 @@ func (h webhookHandler) authenticate(request *http.Request) error {
 
 	// MAC is a message authentication code which is used to verify both the data integrity and authenticity of a
 	// message. A message is considered verified if the both provided and locally computed MACs are equal.
-	providedMAC := h.fetchMAC(request)
+	providedMAC, err := h.fetchMAC(request)
+	if err != nil {
+		return fmt.Errorf("unable to fetch a message authentication code from the request : %w", err)
+	}
 	if providedMAC == nil {
 		return errors.New("the request does not include a message authentication code")
 	}
@@ -228,27 +233,26 @@ func (h webhookHandler) authenticate(request *http.Request) error {
 	return nil
 }
 
-func (h webhookHandler) fetchMAC(request *http.Request) []byte {
+func (h webhookHandler) fetchMAC(request *http.Request) ([]byte, error) {
 	// X-Spark-Signature is an HTTP header which contains a hash-based message authentication code
-	mac := request.Header.Get("X-Spark-Signature")
-	if len(mac) == 0 {
-		return nil
+	encodedMAC := request.Header.Get("X-Spark-Signature")
+	if len(encodedMAC) == 0 {
+		return nil, nil
 	}
-	return []byte(mac)
+	return hex.DecodeString(encodedMAC)
 }
 
 func (h webhookHandler) computeMAC(request *http.Request) ([]byte, error) {
-	body, err := request.GetBody()
-	if err != nil {
-		return nil, fmt.Errorf("unable to get the request body : %w", err)
-	}
+	// copy the request body because it is used further
+	bodyBuffer := new(bytes.Buffer)
+	bodyReader := io.TeeReader(request.Body, bodyBuffer)
+	request.Body = io.NopCloser(bodyBuffer)
 
 	hmacEncoder := hmac.New(sha1.New, []byte(h.webhookSecret))
-	_, err = io.Copy(hmacEncoder, body)
+	_, err := io.Copy(hmacEncoder, bodyReader)
 	if err != nil {
 		return nil, err
 	}
-
 	return hmacEncoder.Sum(nil), nil
 }
 
