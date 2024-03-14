@@ -9,6 +9,9 @@ import (
 
 // Client provides methods to interact with the Webex API
 type Client interface {
+	// GetMyOwnDetails gets information about the currently authenticated user
+	GetMyOwnDetails(ctx context.Context) (*Person, *WebexError, error)
+
 	// CreateMessage creates a new message with the specified content
 	CreateMessage(ctx context.Context, request CreateMessageRequest) (*Message, *WebexError, error)
 
