@@ -342,7 +342,7 @@ func (h webhookHandler) encodeResourceId(rawResource json.RawMessage) (string, e
 
 func (h webhookHandler) fetchInitiatorEmail(resource any) string {
 	switch v := resource.(type) {
-	case webexapi.Message:
+	case *webexapi.Message:
 		return v.PersonEmail
 
 	// TODO: implement fetching for attachment actions
@@ -354,10 +354,10 @@ func (h webhookHandler) fetchInitiatorEmail(resource any) string {
 
 func (h webhookHandler) fetchRoomId(resource any) string {
 	switch v := resource.(type) {
-	case webexapi.Message:
+	case *webexapi.Message:
 		return v.RoomId
 
-	case webexapi.AttachmentAction:
+	case *webexapi.AttachmentAction:
 		return v.RoomId
 
 	default:
