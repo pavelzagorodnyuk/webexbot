@@ -187,8 +187,8 @@ func (c *dialogController) stopAllDialogs() {
 
 func (c *dialogController) processCompletionSignal(ctx context.Context, signal completionSignal) {
 	if signal.executionError != nil {
-		slog.ErrorContext(ctx, "the following error occurred during the execution of the dialog task : %w",
-			signal.executionError)
+		slog.ErrorContext(ctx, "the following error occurred during the execution of the dialog task",
+			slog.Any("error", signal.executionError))
 	}
 
 	dialog := c.activeDialogs[signal.key]

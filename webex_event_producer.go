@@ -171,7 +171,8 @@ func (h webhookHandler) ServeHTTP(response http.ResponseWriter, request *http.Re
 	err := h.authenticate(request)
 	if err != nil {
 		response.WriteHeader(http.StatusUnauthorized)
-		slog.ErrorContext(ctx, "the request cannot be processed because its sender has not been authenticated : %w", err)
+		slog.ErrorContext(ctx, "the request cannot be processed because its sender has not been authenticated",
+			slog.Any("error", err))
 		return
 	}
 
@@ -179,14 +180,14 @@ func (h webhookHandler) ServeHTTP(response http.ResponseWriter, request *http.Re
 	err = json.NewDecoder(request.Body).Decode(callback)
 	if err != nil {
 		response.WriteHeader(http.StatusBadRequest)
-		slog.ErrorContext(ctx, "unable to decode the request body as a webhook callback : %w", err)
+		slog.ErrorContext(ctx, "unable to decode the request body as a webhook callback", slog.Any("error", err))
 		return
 	}
 
 	event, statusCode, err := h.prepareEvent(ctx, *callback)
 	if err != nil {
 		response.WriteHeader(statusCode)
-		slog.ErrorContext(ctx, "unable to prepare an event based on the webhook callback : %w", err)
+		slog.ErrorContext(ctx, "unable to prepare an event based on the webhook callback", slog.Any("error", err))
 		return
 	}
 
