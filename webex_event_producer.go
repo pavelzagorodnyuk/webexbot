@@ -273,11 +273,13 @@ func (h webhookHandler) prepareEvent(
 
 	initiatorEmail := h.fetchInitiatorEmail(resource)
 	roomId := h.fetchRoomId(resource)
+	roomType := h.fetchRoomType(resource)
 
 	return Event{
 		InitiatorId:    callback.ActorId,
 		InitiatorEmail: initiatorEmail,
 		RoomId:         roomId,
+		RoomType:       roomType,
 		Resource:       resource,
 		ResourceKind:   callback.Resource,
 		ResourceEvent:  callback.Event,
@@ -360,6 +362,18 @@ func (h webhookHandler) fetchRoomId(resource any) string {
 
 	case *webexapi.AttachmentAction:
 		return v.RoomId
+
+	default:
+		return ""
+	}
+}
+
+func (h webhookHandler) fetchRoomType(resource any) webexapi.RoomType {
+	switch v := resource.(type) {
+	case *webexapi.Message:
+		return v.RoomType
+
+	// TODO: implement fetching for attachment actions
 
 	default:
 		return ""

@@ -11,7 +11,12 @@ type Event struct {
 	InitiatorEmail string
 
 	// The identifier of the room where the event occurred
+	// NOTE: this field is empty in events related to attachment actions
 	RoomId string
+
+	// The type of the room where the event occurred
+	// NOTE: this field is empty in events related to attachment actions
+	RoomType webexapi.RoomType
 
 	// The resource instance which the event occurred with
 	Resource any
@@ -23,8 +28,10 @@ type Event struct {
 	ResourceEvent webexapi.ResourceEvent
 }
 
-// ResourceKind represents the kind of a resource (for example, messages, rooms, meetings, etc.)
-type ResourceKind webexapi.ResourceKind
+const (
+	RoomTypeDirect = webexapi.RoomTypeDirect
+	RoomTypeGroup  = webexapi.RoomTypeGroup
+)
 
 const (
 	AttachmentActions   = webexapi.AttachmentActions
@@ -36,9 +43,6 @@ const (
 	MeetingParticipants = webexapi.MeetingParticipants
 	MeetingTranscripts  = webexapi.MeetingTranscripts
 )
-
-// ResourceEvent is an event which can happen to a resource (a resource can be created, updated, deleted, etc.)
-type ResourceEvent webexapi.ResourceEvent
 
 const (
 	ResourceCreated  = webexapi.ResourceCreated
